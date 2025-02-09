@@ -16,20 +16,20 @@ declare global {
     };
   }
 }
-export {}; // Ensure module
+export {}; // Ensure this file is treated as a module
 
 import React, { useEffect, useState } from "react";
 import { CallClient, CallAgent, Call } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 import { CommunicationIdentityClient } from "@azure/communication-identity";
 
-// Get ACS connection string from environment variable.
+// Get your ACS connection string and your ACS phone number from environment variables.
 const ACS_CONNECTION_STRING =
   "endpoint=https://acs-v2f-poc-eastus.unitedstates.communication.azure.com/;accesskey=CJStyM5oFKUlJ9wVkS9d1TmcsPLwSU3GylBu6Elb3hxJEU1WoMXFJQQJ99BBACULyCpQpiE2AAAAAZCSgEAi";
 
 /**
- * Helper function to generate an ACS access token.
- * If an existing userId is provided, the token is refreshed; otherwise, a new user is created.
+ * Helper function that uses your ACS connection string to generate a token.
+ * If an existing userId is provided, the token is refreshed; otherwise, a new identity is created.
  */
 async function getTokenAndIdentity(
   existingUserId?: string
@@ -61,15 +61,14 @@ async function getTokenAndIdentity(
 }
 
 /**
- * Custom parameters interface.
- * In our case, we only need the ACS user identifier.
+ * Custom parameters interface. We only care about the ACS user identifier.
  */
 interface CustomParams {
   acsUser: string;
 }
 
 /**
- * Enumeration for phone widget state.
+ * Enumeration for phone widget states.
  */
 enum PhoneWidgetState {
   Idle = "Idle",
@@ -84,7 +83,6 @@ enum PhoneWidgetState {
  * ACSVoiceWidget component.
  */
 const ACSVoiceWidget: React.FC = () => {
-  // Local state variables.
   const [phoneState, setPhoneState] = useState<PhoneWidgetState>(
     PhoneWidgetState.Idle
   );
@@ -95,28 +93,28 @@ const ACSVoiceWidget: React.FC = () => {
   const [customParams, setCustomParams] = useState<CustomParams | null>(null);
   const [cifEnv, setCifEnv] = useState<{ customParams: string } | null>(null);
 
-  // ------------------- ACS Initialization (Using Connection String) -------------------
-  // This effect runs on mount and initializes ACS independently.
+  // -------------------- ACS Initialization --------------------
+  // This useEffect initializes ACS using your connection string.
   useEffect(() => {
     console.log("[ACSVoiceWidget] Initializing ACS (connection string based)");
     (async () => {
       try {
-        // Always create a new identity by passing an empty string.
+        // Always create a new identity (pass an empty string).
         const { token, userId } = await getTokenAndIdentity("");
         console.log("[initializeACS] Token generated for user:", userId);
         // Update our custom parameters for display.
-        setCustomParams({ acsUser: userId });
+        setCustomParams({ acsUser: '+14387730423' });
 
-        // Create token credential with a token refresher.
+        // Create a token credential with a token refresher.
         const tokenCredential = new AzureCommunicationTokenCredential({
           tokenRefresher: async () => {
-            console.log("[initializeACS] Token refresher invoked");
             const result = await getTokenAndIdentity(userId);
             return result.token;
           },
           token: token,
-          refreshProactively: false,
+          refreshProactively: true, // Enable proactive token refresh
         });
+
         console.log("[initializeACS] TokenCredential created");
 
         const callClient = new CallClient();
@@ -124,8 +122,9 @@ const ACSVoiceWidget: React.FC = () => {
           "[initializeACS] Creating CallAgent with displayName:",
           userId
         );
+        // IMPORTANT: For PSTN calls, supply a valid ACS phone number as the caller ID.
         const agent = await callClient.createCallAgent(tokenCredential, {
-          displayName: userId,
+          displayName: 'V2F Demo',
         });
         console.log("[initializeACS] CallAgent created:", agent);
         setCallAgent(agent);
@@ -136,7 +135,7 @@ const ACSVoiceWidget: React.FC = () => {
         await deviceManager.askDevicePermission({ audio: true, video: false });
         console.log("[initializeACS] Audio permission granted");
 
-        // Register incoming call handler.
+        // Register incoming call event handler.
         agent.on("incomingCall", (args) => {
           console.log("[initializeACS] Incoming call event received:", args);
         });
@@ -153,15 +152,15 @@ const ACSVoiceWidget: React.FC = () => {
     })();
   }, []);
 
-  // ------------------- CIF Integration -------------------
-  // This effect runs on mount and handles CIF integration.
+  // -------------------- CIF Integration --------------------
+  // This effect initializes CIF integration and registers CIF event handlers.
   useEffect(() => {
     console.log("[ACSVoiceWidget] Initializing CIF integration");
     fetchCifParams();
     registerCifHandlers();
   }, []);
 
-  // fetchCifParams fetches CIF environment and updates state for display.
+  // fetchCifParams: fetches CIF environment and updates state for display.
   const fetchCifParams = async () => {
     console.log("[fetchCifParams] Entering fetchCifParams");
     if (
@@ -198,7 +197,7 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[fetchCifParams] Exiting fetchCifParams");
   };
 
-  // registerCifHandlers registers CIF event handlers.
+  // registerCifHandlers: registers CIF event handlers (click-to-act, mode change, navigation).
   const registerCifHandlers = () => {
     console.log("[registerCifHandlers] Entering registerCifHandlers");
     if (
@@ -257,40 +256,49 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[registerCifHandlers] Exiting registerCifHandlers");
   };
 
-  // ------------------- Call Handling -------------------
-
-  // Places an outgoing call using the CallAgent.
+  // -------------------- Call Handling --------------------
+  // handlePlaceCall places an outgoing call using the CallAgent.
   const handlePlaceCall = async (phoneNumberInput?: string) => {
     console.log("[handlePlaceCall] Entering handlePlaceCall");
     if (!callAgent) {
       console.error("[handlePlaceCall] Call agent is not initialized yet.");
       return;
     }
-    // IMPORTANT: Ensure the phone number is in E.164 format (e.g. "+14387730423").
+
     const targetNumber = phoneNumberInput || callee;
     if (!targetNumber) {
       console.error("[handlePlaceCall] No valid phone number provided.");
       return;
     }
+
     console.log("[handlePlaceCall] Placing call to:", targetNumber);
     try {
-      const identifier = { phoneNumber: targetNumber };
+      const identifier = targetNumber.startsWith("+")
+        ? { phoneNumber: targetNumber } // For PSTN
+        : { communicationUserId: targetNumber }; // For ACS users
+
+      const alternateCallerId = { phoneNumber: "+18883958119" }; // Replace with your ACS phone number
+
       console.log(
         "[handlePlaceCall] Calling startCall with identifier:",
         identifier
       );
-      const call = callAgent.startCall([identifier]);
+      const call = callAgent.startCall([identifier], { alternateCallerId });
       console.log("[handlePlaceCall] Outgoing call started:", call);
+
       setCurrentCall(call);
       setPhoneState(PhoneWidgetState.Dialing);
 
-      // Subscribe to call state changes.
+      // Subscribe to call state changes
       call.on("stateChanged", () => {
         console.log("[handlePlaceCall] Call state changed:", call.state);
         if (call.state === "Connected") {
+          console.log("Ongoing call", call);
           setPhoneState(PhoneWidgetState.Ongoing);
         } else if (call.state === "Disconnected") {
+          console.log("Disconnected call", call);
           setPhoneState(PhoneWidgetState.CallSummary);
+          setCurrentCall(null); // Clear current call reference
         }
       });
     } catch (error) {
@@ -299,12 +307,13 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[handlePlaceCall] Exiting handlePlaceCall");
   };
 
-  // Hangs up the current call.
+  // handleHangup hangs up the current call.
   const handleHangup = () => {
     console.log("[handleHangup] Entering handleHangup");
     if (currentCall) {
       console.log("[handleHangup] Hanging up call:", currentCall);
       currentCall.hangUp();
+      setCurrentCall(null); // Clear the current call after hangup
       setPhoneState(PhoneWidgetState.CallSummary);
       console.log("[handleHangup] Call hung up, state set to CallSummary");
     } else {
@@ -313,7 +322,7 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[handleHangup] Exiting handleHangup");
   };
 
-  // ------------------- Timer Effect -------------------
+  // -------------------- Timer Effect --------------------
   // Update call duration when call is ongoing.
   useEffect(() => {
     console.log("[Timer Effect] Phone state changed to:", phoneState);
@@ -333,7 +342,7 @@ const ACSVoiceWidget: React.FC = () => {
     };
   }, [phoneState]);
 
-  // ------------------- Render UI -------------------
+  // -------------------- Render UI --------------------
   return (
     <div style={{ padding: "1rem", fontFamily: "Arial, sans-serif" }}>
       <h3>ACS Voice Calling Widget</h3>
@@ -353,7 +362,7 @@ const ACSVoiceWidget: React.FC = () => {
               console.log("[UI] Callee number changed:", e.target.value);
               setCallee(e.target.value);
             }}
-            placeholder="+11234567890"
+            placeholder="+14387730423"
             style={{ marginLeft: "0.5rem", padding: "0.2rem" }}
           />
           <button
