@@ -284,13 +284,14 @@ const ACSVoiceWidget: React.FC = () => {
       registerCifHandlers();
     };
 
-    if (window.Microsoft && window.Microsoft.CIFramework) {
-      window.addEventListener("CIFInitDone", cifInitHandler);
-    } else {
-      console.warn(
-        "[ACSVoiceWidget] CIF APIs not available. Skipping CIF integration."
-      );
-    }
+    cifInitHandler(); // Call the handler immediately in case the event has already fired.
+    // if (window.Microsoft && window.Microsoft.CIFramework) {
+    //   window.addEventListener("CIFInitDone", cifInitHandler);
+    // } else {
+    //   console.warn(
+    //     "[ACSVoiceWidget] CIF APIs not available. Skipping CIF integration."
+    //   );
+    // }
 
     // Optionally, clean up the event listener when the component unmounts.
     // return () => {
