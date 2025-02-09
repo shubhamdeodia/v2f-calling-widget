@@ -22,75 +22,94 @@ import { CallClient, CallAgent, Call } from "@azure/communication-calling";
 import { AzureCommunicationTokenCredential } from "@azure/communication-common";
 import { CommunicationIdentityClient } from "@azure/communication-identity";
 
-// The ACS connection string is expected to be provided in your environment.
-const ACS_CONNECTION_STRING = "endpoint=https://acs-v2f-poc-eastus.unitedstates.communication.azure.com/;accesskey=CJStyM5oFKUlJ9wVkS9d1TmcsPLwSU3GylBu6Elb3hxJEU1WoMXFJQQJ99BBACULyCpQpiE2AAAAAZCSgEAi";
+// Fetch the ACS connection string from your environment.
+const ACS_CONNECTION_STRING =
+  "endpoint=https://acs-v2f-poc-eastus.unitedstates.communication.azure.com/;accesskey=CJStyM5oFKUlJ9wVkS9d1TmcsPLwSU3GylBu6Elb3hxJEU1WoMXFJQQJ99BBACULyCpQpiE2AAAAAZCSgEAi";
+
+/**
+ * Helper function to generate a token and identity.
+ * If an existingUserId is provided, a token is refreshed.
+ * Otherwise, a new identity is created along with an access token (with "voip" scope).
+ */
+async function getTokenAndIdentity(
+  existingUserId?: string
+): Promise<{ token: string; userId: string }> {
+  if (!ACS_CONNECTION_STRING) {
+    throw new Error("ACS connection string not provided in environment.");
+  }
+  const identityClient = new CommunicationIdentityClient(ACS_CONNECTION_STRING);
+  let user;
+  if (existingUserId && existingUserId.trim() !== "") {
+    user = { communicationUserId: existingUserId };
+    const tokenResponse = await identityClient.getToken(user, ["voip"]);
+    console.log(`Refreshed token for user: ${existingUserId}`);
+    return { token: tokenResponse.token, userId: existingUserId };
+  } else {
+    const identityTokenResponse = await identityClient.createUserAndToken([
+      "voip",
+    ]);
+    console.log(
+      `Created new identity with ID: ${identityTokenResponse.user.communicationUserId}`
+    );
+    return {
+      token: identityTokenResponse.token,
+      userId: identityTokenResponse.user.communicationUserId,
+    };
+  }
+}
 
 //
-// Custom parameters interface. In this implementation, we only expect an ACS user identifier.
-// (No default CIF values will be provided.)
+// Define our custom parameters interface. In this implementation, we only expect an ACS user identifier.
+// (CIF values are now used only for display or additional CIF functionality.)
 //
 interface CustomParams {
   acsUser: string;
 }
 
 //
-// Helper function to generate a token using your ACS connection string.
-// If acsUser is provided, that token will be generated for the existing user; otherwise, a new user is created.
-async function getTokenUsingConnectionString(
-  connectionString: string,
-  acsUser?: string
-): Promise<{ token: string; userId: string }> {
-  const identityClient = new CommunicationIdentityClient(connectionString);
-  let user;
-  if (acsUser && acsUser.trim() !== "") {
-    user = { communicationUserId: acsUser };
-  } else {
-    // Create a new ACS user if none is provided.
-    user = await identityClient.createUser();
-  }
-  const tokenResponse = await identityClient.getToken(user, ["voip"]);
-  return { token: tokenResponse.token, userId: user.communicationUserId };
+// ACSVoiceWidget Component
+//
+enum PhoneWidgetState {
+  Idle = "Idle", // No active call
+  Dialing = "Dialing", // Outbound call in progress
+  Ongoing = "Ongoing", // Call connected
+  CallSummary = "CallSummary", // Call ended (post‑call)
+  Incoming = "Incoming",
+  CallAccepted = "CallAccepted",
 }
 
-//
-// The ACSVoiceWidget component
-//
 const ACSVoiceWidget: React.FC = () => {
-  // Local state variables
-  const [phoneState, setPhoneState] = useState<
-    "Idle" | "Dialing" | "Ongoing" | "CallSummary"
-  >("Idle");
+  const [phoneState, setPhoneState] = useState<PhoneWidgetState>(
+    PhoneWidgetState.Idle
+  );
   const [callee, setCallee] = useState<string>("");
   const [callAgent, setCallAgent] = useState<CallAgent | null>(null);
   const [currentCall, setCurrentCall] = useState<Call | null>(null);
   const [callDuration, setCallDuration] = useState<number>(0);
   const [customParams, setCustomParams] = useState<CustomParams | null>(null);
+  const [cifEnv, setCifEnv] = useState<{ customParams: string } | null>(null);
 
-  // Function to initialize ACS using the connection string.
+  // ------------------- ACS Initialization (using connection string) -------------------
+
+  // This function initializes ACS using your connection string.
   const initializeACS = async (params: CustomParams) => {
-    console.log("[initializeACS] Starting initialization with params:", params);
+    console.log(
+      "[initializeACS] Starting ACS initialization with params:",
+      params
+    );
     try {
-      if (!ACS_CONNECTION_STRING) {
-        throw new Error("ACS connection string not provided in environment.");
-      }
-      // Generate a token using the connection string. If params.acsUser is empty, a new ACS user is created.
-      const { token, userId } = await getTokenUsingConnectionString(
-        ACS_CONNECTION_STRING,
-        params.acsUser
-      );
-      console.log("[initializeACS] Generated token for user:", userId);
+      const { token, userId } = await getTokenAndIdentity(""); // always create or refresh without CIF value
+      console.log("[initializeACS] Token generated for user:", userId);
+      // Update customParams with the definitive ACS user ID.
+      setCustomParams({ acsUser: userId });
 
-      // Create a token refresher that regenerates the token via the connection string.
       const tokenCredential = new AzureCommunicationTokenCredential({
         tokenRefresher: async () => {
           console.log("[initializeACS] Token refresher invoked");
-          const result = await getTokenUsingConnectionString(
-            ACS_CONNECTION_STRING,
-            params.acsUser
-          );
+          const result = await getTokenAndIdentity(userId);
           return result.token;
         },
-        token: token, // Use the initially generated token.
+        token: token,
         refreshProactively: false,
       });
       console.log("[initializeACS] TokenCredential created");
@@ -98,10 +117,10 @@ const ACSVoiceWidget: React.FC = () => {
       const callClient = new CallClient();
       console.log(
         "[initializeACS] Creating CallAgent with displayName:",
-        params.acsUser || "New ACS User"
+        userId
       );
       const agent = await callClient.createCallAgent(tokenCredential, {
-        displayName: params.acsUser || "New ACS User",
+        displayName: userId,
       });
       console.log("[initializeACS] CallAgent created:", agent);
       setCallAgent(agent);
@@ -112,21 +131,23 @@ const ACSVoiceWidget: React.FC = () => {
       await deviceManager.askDevicePermission({ audio: true, video: false });
       console.log("[initializeACS] Audio permission granted");
 
-      // Register incoming call event handler.
+      // Register an incoming call event handler.
       agent.on("incomingCall", (args) => {
         console.log("[initializeACS] Incoming call event received:", args);
       });
-      setPhoneState("Idle");
+
+      setPhoneState(PhoneWidgetState.Idle);
       console.log(
-        "[initializeACS] Initialization complete; widget state set to Idle"
+        "[initializeACS] ACS initialization complete; widget state set to Idle"
       );
     } catch (error) {
-      console.error("[initializeACS] Error initializing ACS:", error);
+      console.error("[initializeACS] Error during ACS initialization:", error);
     }
   };
 
-  // Retrieve CIF custom parameters if available.
-  // Do not provide a default—if CIF APIs are not available, we simply log a warning and initialize ACS with an empty acsUser.
+  // ------------------- CIF Integration -------------------
+
+  // fetchCifParams fetches CIF parameters (if available) without using them to initialize ACS.
   const fetchCifParams = async () => {
     console.log("[fetchCifParams] Entering fetchCifParams");
     if (
@@ -139,30 +160,97 @@ const ACSVoiceWidget: React.FC = () => {
           "[fetchCifParams] CIF API available. Calling getEnvironment()..."
         );
         const envObj = await window.Microsoft.CIFramework.getEnvironment();
-        console.log("[fetchCifParams] Received environment object:", envObj);
-        // Assume the CIF custom parameter is a JSON string that contains an acsUser value.
-        // For example: { "acsUser": "8:acs:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" }
-        const params = JSON.parse(envObj.customParams) as CustomParams;
         console.log(
-          "[fetchCifParams] Parsed custom parameters from CIF:",
-          params
+          "[fetchCifParams] Received CIF environment object:",
+          envObj
         );
+        setCifEnv(envObj);
+        // Attempt to parse CIF custom parameters.
+        let params: CustomParams;
+        try {
+          params = JSON.parse(envObj.customParams) as CustomParams;
+          console.log("[fetchCifParams] Parsed CIF custom parameters:", params);
+        } catch (jsonError) {
+          console.error(
+            "[fetchCifParams] Error parsing CIF customParams. Using empty acsUser.",
+            jsonError
+          );
+          params = { acsUser: "" };
+        }
+        // Here we only update state for display or additional CIF logic.
         setCustomParams(params);
-        await initializeACS(params);
       } catch (error) {
         console.error("[fetchCifParams] Error fetching CIF parameters:", error);
       }
     } else {
       console.warn("[fetchCifParams] CIF APIs not available.");
-      // Do not provide any default values; simply initialize ACS with an empty acsUser.
-      const params: CustomParams = { acsUser: "" };
-      setCustomParams(params);
-      await initializeACS(params);
+      setCustomParams({ acsUser: "" });
     }
     console.log("[fetchCifParams] Exiting fetchCifParams");
   };
 
-  // Handler to place an outgoing call using ACS.
+  // registerCifHandlers preserves your existing CIF event handlers.
+  const registerCifHandlers = () => {
+    console.log("[registerCifHandlers] Entering registerCifHandlers");
+    if (
+      window.Microsoft &&
+      window.Microsoft.CIFramework &&
+      window.Microsoft.CIFramework.addHandler
+    ) {
+      console.log("[registerCifHandlers] CIF APIs are available");
+      window.Microsoft.CIFramework.addHandler(
+        "onclicktoact",
+        async (paramStr: string) => {
+          console.log(
+            "[CIF Handler] onclicktoact event triggered with paramStr:",
+            paramStr
+          );
+          try {
+            const params = JSON.parse(paramStr);
+            console.log("[CIF Handler] Parsed CIF params:", params);
+            const phNo = params.value;
+            console.log("[CIF Handler] Parsed phone number:", phNo);
+            setCallee(phNo);
+            console.log(
+              "[CIF Handler] Calling handlePlaceCall with phone:",
+              phNo
+            );
+            await handlePlaceCall(phNo);
+          } catch (error) {
+            console.error(
+              "[CIF Handler] Error in onclicktoact handler:",
+              error
+            );
+          }
+        }
+      );
+      window.Microsoft.CIFramework.addHandler(
+        "onmodechanged",
+        async (paramStr: string) => {
+          console.log("[CIF Handler] onmodechanged event triggered:", paramStr);
+        }
+      );
+      window.Microsoft.CIFramework.addHandler(
+        "onpagenavigate",
+        async (paramStr: string) => {
+          console.log(
+            "[CIF Handler] onpagenavigate event triggered:",
+            paramStr
+          );
+        }
+      );
+      console.log("[registerCifHandlers] CIF event handlers registered");
+    } else {
+      console.warn(
+        "[registerCifHandlers] CIF APIs not available to register handlers"
+      );
+    }
+    console.log("[registerCifHandlers] Exiting registerCifHandlers");
+  };
+
+  // ------------------- Call Functions -------------------
+
+  // Handler to place an outgoing call.
   const handlePlaceCall = async (phoneNumberInput?: string) => {
     console.log("[handlePlaceCall] Entering handlePlaceCall");
     if (!callAgent) {
@@ -176,20 +264,23 @@ const ACSVoiceWidget: React.FC = () => {
     }
     console.log("[handlePlaceCall] Placing call to:", targetNumber);
     try {
-      // For outbound PSTN calls, ACS accepts a phone number identifier.
       const identifier = { phoneNumber: targetNumber };
+      console.log(
+        "[handlePlaceCall] Calling startCall with identifier:",
+        identifier
+      );
       const call = callAgent.startCall([identifier]);
       console.log("[handlePlaceCall] Outgoing call started:", call);
       setCurrentCall(call);
-      setPhoneState("Dialing");
+      setPhoneState(PhoneWidgetState.Dialing);
 
       // Subscribe to call state changes.
       call.on("stateChanged", () => {
         console.log("[handlePlaceCall] Call state changed:", call.state);
         if (call.state === "Connected") {
-          setPhoneState("Ongoing");
+          setPhoneState(PhoneWidgetState.Ongoing);
         } else if (call.state === "Disconnected") {
-          setPhoneState("CallSummary");
+          setPhoneState(PhoneWidgetState.CallSummary);
         }
       });
     } catch (error) {
@@ -198,12 +289,13 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[handlePlaceCall] Exiting handlePlaceCall");
   };
 
-  // Handler to hang up/end the call.
+  // Handler to hang up the call.
   const handleHangup = () => {
     console.log("[handleHangup] Entering handleHangup");
     if (currentCall) {
+      console.log("[handleHangup] Hanging up call:", currentCall);
       currentCall.hangUp();
-      setPhoneState("CallSummary");
+      setPhoneState(PhoneWidgetState.CallSummary);
       console.log("[handleHangup] Call hung up, state set to CallSummary");
     } else {
       console.warn("[handleHangup] No active call to hang up");
@@ -215,7 +307,7 @@ const ACSVoiceWidget: React.FC = () => {
   useEffect(() => {
     console.log("[Timer Effect] Phone state changed to:", phoneState);
     let timerId: number;
-    if (phoneState === "Ongoing") {
+    if (phoneState === PhoneWidgetState.Ongoing) {
       setCallDuration(0);
       timerId = window.setInterval(() => {
         setCallDuration((prev) => prev + 1);
@@ -230,26 +322,32 @@ const ACSVoiceWidget: React.FC = () => {
     };
   }, [phoneState]);
 
-  // Initialize CIF integration on component mount.
+  // ------------------- useEffect Hooks -------------------
+
+  // Initialize ACS independently using the connection string.
   useEffect(() => {
-    console.log(
-      "[ACSVoiceWidget] Component mounted, initializing CIF integration"
-    );
-    fetchCifParams();
+    console.log("[ACSVoiceWidget] Initializing ACS from connection string");
+    // We initialize ACS with an empty acsUser (new identity will be created).
+    initializeACS({ acsUser: "" });
   }, []);
 
-  // Render the UI based on current phone state.
+  // Initialize CIF integration and register CIF handlers.
+  useEffect(() => {
+    console.log("[ACSVoiceWidget] Initializing CIF integration");
+    fetchCifParams();
+    registerCifHandlers();
+  }, []);
+
+  // ------------------- Render UI -------------------
   return (
     <div style={{ padding: "1rem", fontFamily: "Arial, sans-serif" }}>
       <h3>ACS Voice Calling Widget</h3>
       {customParams ? (
-        <p>
-          Call Agent initialized for {customParams.acsUser || "New ACS User"}
-        </p>
+        <p>Call Agent initialized for {customParams.acsUser}</p>
       ) : (
         <p>Initializing ACS...</p>
       )}
-      {phoneState === "Idle" && (
+      {phoneState === PhoneWidgetState.Idle && (
         <div>
           <label htmlFor="callee">Enter Callee Number:</label>
           <input
@@ -275,15 +373,18 @@ const ACSVoiceWidget: React.FC = () => {
           </button>
         </div>
       )}
-      {phoneState === "Dialing" && (
+      {phoneState === PhoneWidgetState.Dialing && (
         <div>
           <p>Dialing {callee}...</p>
         </div>
       )}
-      {phoneState === "Ongoing" && (
+      {phoneState === PhoneWidgetState.Ongoing && (
         <div>
           <p>Call in progress with {callee}.</p>
-          <p>Duration: {callDuration} seconds</p>
+          <p>
+            Duration: {Math.floor(callDuration / 3600)}:
+            {Math.floor((callDuration % 3600) / 60)}:{callDuration % 60}
+          </p>
           <button
             onClick={() => {
               console.log("[UI] Hang Up button clicked");
@@ -294,17 +395,22 @@ const ACSVoiceWidget: React.FC = () => {
           </button>
         </div>
       )}
-      {phoneState === "CallSummary" && (
+      {phoneState === PhoneWidgetState.CallSummary && (
         <div>
           <p>Call ended with {callee}.</p>
           <button
             onClick={() => {
               console.log("[UI] Reset button clicked, resetting state to Idle");
-              setPhoneState("Idle");
+              setPhoneState(PhoneWidgetState.Idle);
             }}
           >
             Reset
           </button>
+        </div>
+      )}
+      {cifEnv && (
+        <div style={{ marginTop: "1rem", fontSize: "0.8rem", color: "#555" }}>
+          <strong>CIF Environment:</strong> {JSON.stringify(cifEnv)}
         </div>
       )}
     </div>
