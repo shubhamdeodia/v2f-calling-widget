@@ -98,7 +98,7 @@ const ACSVoiceWidget: React.FC = () => {
 
   // -------------------- ACS Initialization --------------------
   useEffect(() => {
-    console.log("[ACSVoiceWidget] Checking for CIF API:", window.Microsoft && window.Microsoft.CIFramework);
+    console.log("[ACSVoiceWidget] Checking for CIF API:", window.Microsoft.CIFramework);
     console.log("[ACSVoiceWidget] Initializing ACS (connection string based)");
     (async () => {
       try {
