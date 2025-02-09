@@ -10,6 +10,10 @@ declare global {
           eventName: string,
           handler: (param: string) => void
         ) => void;
+        openForm?: (
+          entityFormOptions: string,
+          formParameters: string
+        ) => Promise<void>;
         setMode?: (mode: number) => Promise<unknown>;
         setClickToAct?: (value: boolean) => Promise<unknown>;
       };
@@ -29,7 +33,6 @@ const ACS_CONNECTION_STRING =
 
 /**
  * Helper function that uses your ACS connection string to generate a token.
- * If an existing userId is provided, the token is refreshed; otherwise, a new identity is created.
  */
 async function getTokenAndIdentity(
   existingUserId?: string
@@ -94,7 +97,6 @@ const ACSVoiceWidget: React.FC = () => {
   const [cifEnv, setCifEnv] = useState<{ customParams: string } | null>(null);
 
   // -------------------- ACS Initialization --------------------
-  // This useEffect initializes ACS using your connection string.
   useEffect(() => {
     console.log("[ACSVoiceWidget] Initializing ACS (connection string based)");
     (async () => {
@@ -103,7 +105,7 @@ const ACSVoiceWidget: React.FC = () => {
         const { token, userId } = await getTokenAndIdentity("");
         console.log("[initializeACS] Token generated for user:", userId);
         // Update our custom parameters for display.
-        setCustomParams({ acsUser: '+14387730423' });
+        setCustomParams({ acsUser: "+14387730423" });
 
         // Create a token credential with a token refresher.
         const tokenCredential = new AzureCommunicationTokenCredential({
@@ -112,7 +114,7 @@ const ACSVoiceWidget: React.FC = () => {
             return result.token;
           },
           token: token,
-          refreshProactively: true, // Enable proactive token refresh
+          refreshProactively: true,
         });
 
         console.log("[initializeACS] TokenCredential created");
@@ -124,11 +126,10 @@ const ACSVoiceWidget: React.FC = () => {
         );
         // IMPORTANT: For PSTN calls, supply a valid ACS phone number as the caller ID.
         const agent = await callClient.createCallAgent(tokenCredential, {
-          displayName: 'V2F Demo',
+          displayName: "V2F Demo",
         });
         console.log("[initializeACS] CallAgent created:", agent);
         setCallAgent(agent);
-
         // Request permission for audio devices.
         console.log("[initializeACS] Requesting audio device permissions...");
         const deviceManager = await callClient.getDeviceManager();
@@ -150,14 +151,6 @@ const ACSVoiceWidget: React.FC = () => {
         );
       }
     })();
-  }, []);
-
-  // -------------------- CIF Integration --------------------
-  // This effect initializes CIF integration and registers CIF event handlers.
-  useEffect(() => {
-    console.log("[ACSVoiceWidget] Initializing CIF integration");
-    fetchCifParams();
-    registerCifHandlers();
   }, []);
 
   // fetchCifParams: fetches CIF environment and updates state for display.
@@ -197,7 +190,7 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[fetchCifParams] Exiting fetchCifParams");
   };
 
-  // registerCifHandlers: registers CIF event handlers (click-to-act, mode change, navigation).
+  // registerCifHandlers: registers CIF event handlers (onclicktoact, onmodechanged, onpagenavigate).
   const registerCifHandlers = () => {
     console.log("[registerCifHandlers] Entering registerCifHandlers");
     if (
@@ -232,6 +225,7 @@ const ACSVoiceWidget: React.FC = () => {
           }
         }
       );
+
       window.Microsoft.CIFramework.addHandler(
         "onmodechanged",
         async (paramStr: string) => {
@@ -256,8 +250,39 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[registerCifHandlers] Exiting registerCifHandlers");
   };
 
+  // Initialize CIF integration.
+  // -------------------- CIF Integration --------------------
+  // Wait for CIF initialization event (CIFInitDone) before calling fetchCifParams and registerCifHandlers.
+  useEffect(() => {
+    console.log(
+      "[ACSVoiceWidget] Waiting for CIFInitDone event to initialize CIF integration."
+    );
+
+    // CIFInitDone handler: invoked once the framework signals it's ready.
+    const cifInitHandler = () => {
+      console.log("[ACSVoiceWidget] CIFInitDone event received.");
+      fetchCifParams();
+      registerCifHandlers();
+    };
+
+    // Check if the Microsoft CIFramework object exists before adding the event listener.
+    if (window.Microsoft && window.Microsoft.CIFramework) {
+      window.addEventListener("CIFInitDone", cifInitHandler);
+    } else {
+      console.warn(
+        "[ACSVoiceWidget] CIF APIs not available. Skipping CIF integration."
+      );
+    }
+
+    // Clean up the event listener when the component unmounts.
+    return () => {
+      if (window.Microsoft && window.Microsoft.CIFramework) {
+        window.removeEventListener("CIFInitDone", cifInitHandler);
+      }
+    };
+  }, []);
+
   // -------------------- Call Handling --------------------
-  // handlePlaceCall places an outgoing call using the CallAgent.
   const handlePlaceCall = async (phoneNumberInput?: string) => {
     console.log("[handlePlaceCall] Entering handlePlaceCall");
     if (!callAgent) {
@@ -289,7 +314,7 @@ const ACSVoiceWidget: React.FC = () => {
       setCurrentCall(call);
       setPhoneState(PhoneWidgetState.Dialing);
 
-      // Subscribe to call state changes
+      // Subscribe to call state changes.
       call.on("stateChanged", () => {
         console.log("[handlePlaceCall] Call state changed:", call.state);
         if (call.state === "Connected") {
@@ -298,7 +323,7 @@ const ACSVoiceWidget: React.FC = () => {
         } else if (call.state === "Disconnected") {
           console.log("Disconnected call", call);
           setPhoneState(PhoneWidgetState.CallSummary);
-          setCurrentCall(null); // Clear current call reference
+          setCurrentCall(null);
         }
       });
     } catch (error) {
@@ -307,13 +332,12 @@ const ACSVoiceWidget: React.FC = () => {
     console.log("[handlePlaceCall] Exiting handlePlaceCall");
   };
 
-  // handleHangup hangs up the current call.
   const handleHangup = () => {
     console.log("[handleHangup] Entering handleHangup");
     if (currentCall) {
       console.log("[handleHangup] Hanging up call:", currentCall);
       currentCall.hangUp();
-      setCurrentCall(null); // Clear the current call after hangup
+      setCurrentCall(null);
       setPhoneState(PhoneWidgetState.CallSummary);
       console.log("[handleHangup] Call hung up, state set to CallSummary");
     } else {
@@ -323,7 +347,6 @@ const ACSVoiceWidget: React.FC = () => {
   };
 
   // -------------------- Timer Effect --------------------
-  // Update call duration when call is ongoing.
   useEffect(() => {
     console.log("[Timer Effect] Phone state changed to:", phoneState);
     let timerId: number;
