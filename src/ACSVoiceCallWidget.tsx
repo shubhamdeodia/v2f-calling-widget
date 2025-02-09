@@ -293,11 +293,11 @@ const ACSVoiceWidget: React.FC = () => {
     }
 
     // Optionally, clean up the event listener when the component unmounts.
-    return () => {
-      if (window.Microsoft && window.Microsoft.CIFramework) {
-        window.removeEventListener("CIFInitDone", cifInitHandler);
-      }
-    };
+    // return () => {
+    //   if (window.Microsoft && window.Microsoft.CIFramework) {
+    //     window.removeEventListener("CIFInitDone", cifInitHandler);
+    //   }
+    // };
   }, []);
 
   // -------------------- Call Handling --------------------
