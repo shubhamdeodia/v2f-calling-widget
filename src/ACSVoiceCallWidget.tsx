@@ -93,14 +93,21 @@ const ACSVoiceWidget: React.FC = () => {
       params
     );
     try {
-      const tokenCredential = new AzureCommunicationTokenCredential(
-        params.acsToken
-      );
+      const tokenCredential = new AzureCommunicationTokenCredential({
+        tokenRefresher: async () => {
+          // In a production app, this would call your backend to get a new token.
+          return params.acsToken;
+        },
+        token: params.acsToken, // Provide your initial token so the first refresh is skipped.
+        refreshProactively: false, // Set to false if you don't want auto-refresh.
+      });
+      
       const callClient = new CallClient();
       console.log(
         "[initializeACS] Creating CallAgent with displayName:",
         params.acsUser
       );
+
       // Optionally pass a displayName (acsUser) during creation
       const agent = await callClient.createCallAgent(tokenCredential, {
         displayName: params.acsUser,
