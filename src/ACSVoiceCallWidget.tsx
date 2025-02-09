@@ -139,6 +139,7 @@ const ACSVoiceWidget: React.FC = () => {
         // Register incoming call event handler.
         agent.on("incomingCall", (args) => {
           console.log("[initializeACS] Incoming call event received:", args);
+          // (You could update state here if you want to display an incoming call UI.)
         });
         setPhoneState(PhoneWidgetState.Idle);
         console.log(
@@ -151,6 +152,22 @@ const ACSVoiceWidget: React.FC = () => {
         );
       }
     })();
+  }, []);
+
+  // -------------------- CIF Initialization --------------------
+  // Enable click-to-act as soon as the widget loads.
+  useEffect(() => {
+    if (
+      window.Microsoft &&
+      window.Microsoft.CIFramework &&
+      window.Microsoft.CIFramework.setClickToAct
+    ) {
+      window.Microsoft.CIFramework.setClickToAct(true)
+        .then(() => console.log("[CIF] Click-to-act enabled"))
+        .catch((err) =>
+          console.error("[CIF] Error enabling click-to-act:", err)
+        );
+    }
   }, []);
 
   // fetchCifParams: fetches CIF environment and updates state for display.
@@ -199,6 +216,7 @@ const ACSVoiceWidget: React.FC = () => {
       window.Microsoft.CIFramework.addHandler
     ) {
       console.log("[registerCifHandlers] CIF APIs are available");
+      // Handler for click-to-act: for example, when a user clicks a phone number in Dynamics 365.
       window.Microsoft.CIFramework.addHandler(
         "onclicktoact",
         async (paramStr: string) => {
@@ -230,6 +248,7 @@ const ACSVoiceWidget: React.FC = () => {
         "onmodechanged",
         async (paramStr: string) => {
           console.log("[CIF Handler] onmodechanged event triggered:", paramStr);
+          // You can add logic here to adjust your UI (for example, expanding or collapsing your widget)
         }
       );
       window.Microsoft.CIFramework.addHandler(
@@ -239,6 +258,7 @@ const ACSVoiceWidget: React.FC = () => {
             "[CIF Handler] onpagenavigate event triggered:",
             paramStr
           );
+          // You might want to use this event to update context (e.g. record IDs) in your widget
         }
       );
       console.log("[registerCifHandlers] CIF event handlers registered");
@@ -251,21 +271,18 @@ const ACSVoiceWidget: React.FC = () => {
   };
 
   // Initialize CIF integration.
-  // -------------------- CIF Integration --------------------
-  // Wait for CIF initialization event (CIFInitDone) before calling fetchCifParams and registerCifHandlers.
+  // Wait for the CIF framework to signal that it is ready (via the "CIFInitDone" event).
   useEffect(() => {
     console.log(
       "[ACSVoiceWidget] Waiting for CIFInitDone event to initialize CIF integration."
     );
 
-    // CIFInitDone handler: invoked once the framework signals it's ready.
     const cifInitHandler = () => {
       console.log("[ACSVoiceWidget] CIFInitDone event received.");
       fetchCifParams();
       registerCifHandlers();
     };
 
-    // Check if the Microsoft CIFramework object exists before adding the event listener.
     if (window.Microsoft && window.Microsoft.CIFramework) {
       window.addEventListener("CIFInitDone", cifInitHandler);
     } else {
@@ -274,7 +291,7 @@ const ACSVoiceWidget: React.FC = () => {
       );
     }
 
-    // Clean up the event listener when the component unmounts.
+    // Optionally, clean up the event listener when the component unmounts.
     return () => {
       if (window.Microsoft && window.Microsoft.CIFramework) {
         window.removeEventListener("CIFInitDone", cifInitHandler);
@@ -302,7 +319,8 @@ const ACSVoiceWidget: React.FC = () => {
         ? { phoneNumber: targetNumber } // For PSTN
         : { communicationUserId: targetNumber }; // For ACS users
 
-      const alternateCallerId = { phoneNumber: "+18883958119" }; // Replace with your ACS phone number
+      // Replace with your ACS phone number for caller ID
+      const alternateCallerId = { phoneNumber: "+18883958119" };
 
       console.log(
         "[handlePlaceCall] Calling startCall with identifier:",
