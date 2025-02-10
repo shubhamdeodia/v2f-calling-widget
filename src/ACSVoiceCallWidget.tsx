@@ -20,6 +20,7 @@ declare global {
     };
   }
 }
+
 export {}; // Ensure this file is treated as a module
 
 import React, { useEffect, useState } from "react";
@@ -98,7 +99,10 @@ const ACSVoiceWidget: React.FC = () => {
 
   // -------------------- ACS Initialization --------------------
   useEffect(() => {
-    console.log("[ACSVoiceWidget] Checking for CIF API:", window.Microsoft.CIFramework);
+    console.log(
+      "[ACSVoiceWidget] Checking for CIF API:",
+      window.Microsoft.CIFramework
+    );
     console.log("[ACSVoiceWidget] Initializing ACS (connection string based)");
     (async () => {
       try {
@@ -106,7 +110,7 @@ const ACSVoiceWidget: React.FC = () => {
         const { token, userId } = await getTokenAndIdentity("");
         console.log("[initializeACS] Token generated for user:", userId);
         // Update our custom parameters for display.
-        setCustomParams({ acsUser: "+14387730423" });
+        setCustomParams({ acsUser: "+18883958119" });
 
         // Create a token credential with a token refresher.
         const tokenCredential = new AzureCommunicationTokenCredential({
@@ -217,7 +221,6 @@ const ACSVoiceWidget: React.FC = () => {
       window.Microsoft.CIFramework.addHandler
     ) {
       console.log("[registerCifHandlers] CIF APIs are available");
-      // Handler for click-to-act: for example, when a user clicks a phone number in Dynamics 365.
       window.Microsoft.CIFramework.addHandler(
         "onclicktoact",
         async (paramStr: string) => {
@@ -249,9 +252,10 @@ const ACSVoiceWidget: React.FC = () => {
         "onmodechanged",
         async (paramStr: string) => {
           console.log("[CIF Handler] onmodechanged event triggered:", paramStr);
-          // You can add logic here to adjust your UI (for example, expanding or collapsing your widget)
+          // Add UI logic here if needed.
         }
       );
+
       window.Microsoft.CIFramework.addHandler(
         "onpagenavigate",
         async (paramStr: string) => {
@@ -259,7 +263,7 @@ const ACSVoiceWidget: React.FC = () => {
             "[CIF Handler] onpagenavigate event triggered:",
             paramStr
           );
-          // You might want to use this event to update context (e.g. record IDs) in your widget
+          // Add context updating logic here if needed.
         }
       );
       console.log("[registerCifHandlers] CIF event handlers registered");
@@ -272,32 +276,59 @@ const ACSVoiceWidget: React.FC = () => {
   };
 
   // Initialize CIF integration.
-  // Wait for the CIF framework to signal that it is ready (via the "CIFInitDone" event).
+  // This useEffect waits for the CIF library to be ready and also listens for the "CIFInitDone" event.
   useEffect(() => {
-    console.log(
-      "[ACSVoiceWidget] Waiting for CIFInitDone event to initialize CIF integration."
-    );
+    console.log("[ACSVoiceWidget] Initializing CIF integration...");
 
-    const cifInitHandler = () => {
-      console.log("[ACSVoiceWidget] CIFInitDone event received.");
-      fetchCifParams();
-      registerCifHandlers();
+    let loadScriptsCounter = 0;
+
+    // This function checks if the CIF library is loaded.
+    const initCIF = () => {
+      if (
+        window.Microsoft &&
+        window.Microsoft.CIFramework &&
+        window.Microsoft.CIFramework.setClickToAct
+      ) {
+        console.log("[ACSVoiceWidget] CIF framework loaded");
+        // Call your functions to fetch parameters and register handlers.
+        fetchCifParams();
+        registerCifHandlers();
+        // Optionally, you can enable click-to-act here:
+        window.Microsoft.CIFramework.setClickToAct(true)
+          .then(() => console.log("[CIF] Click-to-act enabled"))
+          .catch((err) =>
+            console.error("[CIF] Error enabling click-to-act:", err)
+          );
+      } else {
+        if (loadScriptsCounter < 20) {
+          loadScriptsCounter++;
+          console.log(
+            `[ACSVoiceWidget] CIF not loaded yet. Retry attempt ${loadScriptsCounter}`
+          );
+          setTimeout(initCIF, 300);
+        } else {
+          console.error(
+            "CIFramework library not defined after multiple attempts."
+          );
+        }
+      }
     };
 
-    cifInitHandler(); // Call the handler immediately in case the event has already fired.
-    // if (window.Microsoft && window.Microsoft.CIFramework) {
-    //   window.addEventListener("CIFInitDone", cifInitHandler);
-    // } else {
-    //   console.warn(
-    //     "[ACSVoiceWidget] CIF APIs not available. Skipping CIF integration."
-    //   );
-    // }
+    // Event handler for "CIFInitDone"
+    const cifInitHandler = () => {
+      console.log("[ACSVoiceWidget] CIFInitDone event received.");
+      initCIF();
+    };
 
-    // Optionally, clean up the event listener when the component unmounts.
+    // Listen for the CIFInitDone event.
+    window.addEventListener("CIFInitDone", cifInitHandler);
+
+    // Also attempt to initialize immediately in case the event already fired.
+    initCIF();
+
+    // Cleanup on component unmount.
     // return () => {
-    //   if (window.Microsoft && window.Microsoft.CIFramework) {
-    //     window.removeEventListener("CIFInitDone", cifInitHandler);
-    //   }
+    //   window.removeEventListener("CIFInitDone", cifInitHandler);
     // };
   }, []);
 
