@@ -160,20 +160,7 @@ const ACSVoiceWidget: React.FC = () => {
   }, []);
 
   // -------------------- CIF Initialization --------------------
-  // Enable click-to-act as soon as the widget loads.
-  useEffect(() => {
-    if (
-      window.Microsoft &&
-      window.Microsoft.CIFramework &&
-      window.Microsoft.CIFramework.setClickToAct
-    ) {
-      window.Microsoft.CIFramework.setClickToAct(true)
-        .then(() => console.log("[CIF] Click-to-act enabled"))
-        .catch((err) =>
-          console.error("[CIF] Error enabling click-to-act:", err)
-        );
-    }
-  }, []);
+
 
   // fetchCifParams: fetches CIF environment and updates state for display.
   const fetchCifParams = async () => {
@@ -293,8 +280,6 @@ const ACSVoiceWidget: React.FC = () => {
         // Optionally, you can enable click-to-act here:
         window.Microsoft.CIFramework.setClickToAct(true)
           .then(() => {
-            console.log("[CIF] Click-to-act enabled");
-            // Call your functions to fetch parameters and register handlers.
             fetchCifParams();
             registerCifHandlers();
           })
@@ -315,15 +300,9 @@ const ACSVoiceWidget: React.FC = () => {
         }
       }
     };
-
-    // Event handler for "CIFInitDone"
-    const cifInitHandler = () => {
-      console.log("[ACSVoiceWidget] CIFInitDone event received.");
-      initCIF();
-    };
-
+    
     // Listen for the CIFInitDone event.
-    window.addEventListener("CIFInitDone", cifInitHandler);
+    window.addEventListener("CIFInitDone", initCIF);
 
     // Also attempt to initialize immediately in case the event already fired.
     // initCIF();
