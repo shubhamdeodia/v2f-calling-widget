@@ -96,7 +96,7 @@ const ACSVoiceWidget: React.FC = () => {
   const [callDuration, setCallDuration] = useState<number>(0);
   const [customParams, setCustomParams] = useState<CustomParams | null>(null);
   const [cifEnv, setCifEnv] = useState<{ customParams: string } | null>(null);
-
+  const [isInitilized, setIsInitialized] = useState<boolean>(false);
 
   console.log("[ACSVoiceWidget] Initializing CIF integration...");
 
@@ -107,7 +107,8 @@ const ACSVoiceWidget: React.FC = () => {
     if (
       window.Microsoft &&
       window.Microsoft.CIFramework &&
-      window.Microsoft.CIFramework.setClickToAct
+      window.Microsoft.CIFramework.setClickToAct &&
+      !isInitilized
     ) {
       console.log("[ACSVoiceWidget] CIF framework loaded");
       // Optionally, you can enable click-to-act here:
@@ -115,6 +116,7 @@ const ACSVoiceWidget: React.FC = () => {
         .then(() => {
           fetchCifParams();
           registerCifHandlers();
+          setIsInitialized(true);
         })
         .catch((err) =>
           console.error("[CIF] Error enabling click-to-act:", err)
@@ -135,7 +137,7 @@ const ACSVoiceWidget: React.FC = () => {
   };
 
   initCIF();
-  
+
   // Listen for the CIFInitDone event.
   // window.addEventListener("CIFInitDone", initCIF);
 
@@ -202,7 +204,6 @@ const ACSVoiceWidget: React.FC = () => {
   }, []);
 
   // -------------------- CIF Initialization --------------------
-
 
   // fetchCifParams: fetches CIF environment and updates state for display.
   const fetchCifParams = async () => {
@@ -307,7 +308,6 @@ const ACSVoiceWidget: React.FC = () => {
   // Initialize CIF integration.
   // This useEffect waits for the CIF library to be ready and also listens for the "CIFInitDone" event.
   // useEffect(() => {
-
 
   //   // Also attempt to initialize immediately in case the event already fired.
   //   // initCIF();
