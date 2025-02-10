@@ -290,12 +290,14 @@ const ACSVoiceWidget: React.FC = () => {
         window.Microsoft.CIFramework.setClickToAct
       ) {
         console.log("[ACSVoiceWidget] CIF framework loaded");
-        // Call your functions to fetch parameters and register handlers.
-        fetchCifParams();
-        registerCifHandlers();
         // Optionally, you can enable click-to-act here:
         window.Microsoft.CIFramework.setClickToAct(true)
-          .then(() => console.log("[CIF] Click-to-act enabled"))
+          .then(() => {
+            console.log("[CIF] Click-to-act enabled");
+            // Call your functions to fetch parameters and register handlers.
+            fetchCifParams();
+            registerCifHandlers();
+          })
           .catch((err) =>
             console.error("[CIF] Error enabling click-to-act:", err)
           );
