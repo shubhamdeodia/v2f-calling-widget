@@ -133,9 +133,11 @@ const ACSVoiceWidget: React.FC = () => {
       }
     }
   };
+
+  initCIF();
   
   // Listen for the CIFInitDone event.
-  window.addEventListener("CIFInitDone", initCIF);
+  // window.addEventListener("CIFInitDone", initCIF);
 
   // -------------------- ACS Initialization --------------------
   useEffect(() => {
