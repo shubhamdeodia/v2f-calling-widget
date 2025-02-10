@@ -97,6 +97,46 @@ const ACSVoiceWidget: React.FC = () => {
   const [customParams, setCustomParams] = useState<CustomParams | null>(null);
   const [cifEnv, setCifEnv] = useState<{ customParams: string } | null>(null);
 
+
+  console.log("[ACSVoiceWidget] Initializing CIF integration...");
+
+  let loadScriptsCounter = 0;
+
+  // This function checks if the CIF library is loaded.
+  const initCIF = () => {
+    if (
+      window.Microsoft &&
+      window.Microsoft.CIFramework &&
+      window.Microsoft.CIFramework.setClickToAct
+    ) {
+      console.log("[ACSVoiceWidget] CIF framework loaded");
+      // Optionally, you can enable click-to-act here:
+      window.Microsoft.CIFramework.setClickToAct(true)
+        .then(() => {
+          fetchCifParams();
+          registerCifHandlers();
+        })
+        .catch((err) =>
+          console.error("[CIF] Error enabling click-to-act:", err)
+        );
+    } else {
+      if (loadScriptsCounter < 20) {
+        loadScriptsCounter++;
+        console.log(
+          `[ACSVoiceWidget] CIF not loaded yet. Retry attempt ${loadScriptsCounter}`
+        );
+        setTimeout(initCIF, 300);
+      } else {
+        console.error(
+          "CIFramework library not defined after multiple attempts."
+        );
+      }
+    }
+  };
+  
+  // Listen for the CIFInitDone event.
+  window.addEventListener("CIFInitDone", initCIF);
+
   // -------------------- ACS Initialization --------------------
   useEffect(() => {
     console.log(
@@ -264,54 +304,17 @@ const ACSVoiceWidget: React.FC = () => {
 
   // Initialize CIF integration.
   // This useEffect waits for the CIF library to be ready and also listens for the "CIFInitDone" event.
-  useEffect(() => {
-    console.log("[ACSVoiceWidget] Initializing CIF integration...");
+  // useEffect(() => {
 
-    let loadScriptsCounter = 0;
 
-    // This function checks if the CIF library is loaded.
-    const initCIF = () => {
-      if (
-        window.Microsoft &&
-        window.Microsoft.CIFramework &&
-        window.Microsoft.CIFramework.setClickToAct
-      ) {
-        console.log("[ACSVoiceWidget] CIF framework loaded");
-        // Optionally, you can enable click-to-act here:
-        window.Microsoft.CIFramework.setClickToAct(true)
-          .then(() => {
-            fetchCifParams();
-            registerCifHandlers();
-          })
-          .catch((err) =>
-            console.error("[CIF] Error enabling click-to-act:", err)
-          );
-      } else {
-        if (loadScriptsCounter < 20) {
-          loadScriptsCounter++;
-          console.log(
-            `[ACSVoiceWidget] CIF not loaded yet. Retry attempt ${loadScriptsCounter}`
-          );
-          setTimeout(initCIF, 300);
-        } else {
-          console.error(
-            "CIFramework library not defined after multiple attempts."
-          );
-        }
-      }
-    };
-    
-    // Listen for the CIFInitDone event.
-    window.addEventListener("CIFInitDone", initCIF);
+  //   // Also attempt to initialize immediately in case the event already fired.
+  //   // initCIF();
 
-    // Also attempt to initialize immediately in case the event already fired.
-    // initCIF();
-
-    // Cleanup on component unmount.
-    // return () => {
-    //   window.removeEventListener("CIFInitDone", cifInitHandler);
-    // };
-  }, []);
+  //   // Cleanup on component unmount.
+  //   // return () => {
+  //   //   window.removeEventListener("CIFInitDone", cifInitHandler);
+  //   // };
+  // }, []);
 
   // -------------------- Call Handling --------------------
   const handlePlaceCall = async (phoneNumberInput?: string) => {
