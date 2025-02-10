@@ -324,7 +324,7 @@ const ACSVoiceWidget: React.FC = () => {
     window.addEventListener("CIFInitDone", cifInitHandler);
 
     // Also attempt to initialize immediately in case the event already fired.
-    initCIF();
+    // initCIF();
 
     // Cleanup on component unmount.
     // return () => {
